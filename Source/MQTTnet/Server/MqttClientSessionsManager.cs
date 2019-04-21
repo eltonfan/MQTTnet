@@ -246,6 +246,24 @@ namespace MQTTnet.Server
                         },
                         cancellationToken).ConfigureAwait(false);
 
+                    try
+                    {
+                        await clientAdapter.DisconnectAsync(_options.DefaultCommunicationTimeout, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.Error(exception, "Error while disconnecting channel adapter.");
+                    }
+
+                    try
+                    {
+                        clientAdapter.Dispose();
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.Error(exception, "Error while disposing channel adapter.");
+                    }
+
                     return;
                 }
 
