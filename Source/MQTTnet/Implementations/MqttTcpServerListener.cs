@@ -66,12 +66,13 @@ namespace MQTTnet.Implementations
         {
             while (!_cancellationToken.IsCancellationRequested)
             {
+                Socket clientSocket = null;
                 try
                 {
 #if NET452 || NET461
-                    var clientSocket = await Task.Factory.FromAsync(_socket.BeginAccept, _socket.EndAccept, null).ConfigureAwait(false);
+                    clientSocket = await Task.Factory.FromAsync(_socket.BeginAccept, _socket.EndAccept, null).ConfigureAwait(false);
 #else
-                    var clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
+                    clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
 #endif
                     clientSocket.NoDelay = true;
 
@@ -93,18 +94,45 @@ namespace MQTTnet.Implementations
                 }
                 catch (ObjectDisposedException)
                 {
+                    Cleanup(clientSocket);
                     // It can happen that the listener socket is accessed after the cancellation token is already set and the listener socket is disposed.
                 }
                 catch (Exception exception)
                 {
+                    Cleanup(clientSocket);
                     if (exception is SocketException s && s.SocketErrorCode == SocketError.OperationAborted)
                     {
                         return;
                     }
+                    if(exception is System.IO.IOException ioException)
+                    {
+                        _logger.Error(exception, $"Error while accepting connection at TCP listener {_socket.LocalEndPoint} TLS={_tlsCertificate != null}, Skip.");
+                        continue;
+                    }
 
-                    _logger.Error(exception, $"Error while accepting connection at TCP listener {_socket.LocalEndPoint} TLS={_tlsCertificate != null}.");
+                    _logger.Error(exception, $"Error while accepting connection at TCP listener {_socket.LocalEndPoint} TLS={_tlsCertificate != null}, Wait for 1s.");
                     await Task.Delay(TimeSpan.FromSeconds(1), _cancellationToken).ConfigureAwait(false);
                 }
+            }
+        }
+
+        void Cleanup(Socket socket)
+        {
+            if (socket == null)
+                return;
+            try
+            {
+                if (socket.Connected)
+                {
+                    socket.Shutdown(SocketShutdown.Both);
+                }
+                socket.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (NullReferenceException)
+            {
             }
         }
 
