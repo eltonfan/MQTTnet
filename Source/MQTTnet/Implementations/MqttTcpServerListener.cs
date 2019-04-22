@@ -67,6 +67,7 @@ namespace MQTTnet.Implementations
             while (!_cancellationToken.IsCancellationRequested)
             {
                 Socket clientSocket = null;
+                SslStream sslStream = null;
                 try
                 {
 #if NET452 || NET461
@@ -75,8 +76,6 @@ namespace MQTTnet.Implementations
                     clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
 #endif
                     clientSocket.NoDelay = true;
-
-                    SslStream sslStream = null;
 
                     if (_tlsCertificate != null)
                     {
@@ -92,41 +91,61 @@ namespace MQTTnet.Implementations
                     var clientAdapter = new MqttChannelAdapter(new MqttTcpChannel(clientSocket, sslStream), new MqttPacketSerializer(), _logger);
                     ClientAccepted?.Invoke(this, new MqttServerAdapterClientAcceptedEventArgs(clientAdapter));
                 }
-                catch (ObjectDisposedException)
+                catch (ObjectDisposedException exception)
                 {
-                    Cleanup(clientSocket);
+                    var localEndPoint = clientSocket?.LocalEndPoint?.ToString();
+                    var remoteEndPoint = clientSocket?.RemoteEndPoint?.ToString();
+                    Cleanup(clientSocket, sslStream);
+                    _logger.Warning(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Skip.");
                     // It can happen that the listener socket is accessed after the cancellation token is already set and the listener socket is disposed.
                 }
                 catch (Exception exception)
                 {
-                    Cleanup(clientSocket);
+                    var localEndPoint = clientSocket?.LocalEndPoint?.ToString();
+                    var remoteEndPoint = clientSocket?.RemoteEndPoint?.ToString();
+                    Cleanup(clientSocket, sslStream);
+
                     if (exception is SocketException s && s.SocketErrorCode == SocketError.OperationAborted)
                     {
+                        _logger.Warning(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, OperationAborted.");
                         return;
                     }
                     if(exception is System.IO.IOException ioException)
                     {
-                        _logger.Error(exception, $"Error while accepting connection at TCP listener {_socket.LocalEndPoint} TLS={_tlsCertificate != null}, Skip.");
+                        _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Wait for 0.1s.");
+                        await Task.Delay(TimeSpan.FromSeconds(0.1), _cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
-                    _logger.Error(exception, $"Error while accepting connection at TCP listener {_socket.LocalEndPoint} TLS={_tlsCertificate != null}, Wait for 1s.");
+                    _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Wait for 1s.");
                     await Task.Delay(TimeSpan.FromSeconds(1), _cancellationToken).ConfigureAwait(false);
                 }
             }
         }
 
-        void Cleanup(Socket socket)
+        void Cleanup(Socket socket, SslStream stream)
         {
-            if (socket == null)
-                return;
+            Cleanup(ref stream, s => s.Dispose());
+            Cleanup(ref socket, s =>
+            {
+                if (s.Connected)
+                {
+                    s.Shutdown(SocketShutdown.Both);
+                }
+                s.Dispose();
+            });
+        }
+
+        private static void Cleanup<T>(ref T item, Action<T> handler) where T : class
+        {
+            var temp = item;
+            item = null;
             try
             {
-                if (socket.Connected)
+                if (temp != null)
                 {
-                    socket.Shutdown(SocketShutdown.Both);
+                    handler(temp);
                 }
-                socket.Dispose();
             }
             catch (ObjectDisposedException)
             {
