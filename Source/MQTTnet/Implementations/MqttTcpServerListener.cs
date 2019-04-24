@@ -1,5 +1,6 @@
 ﻿#if !WINDOWS_UWP
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -62,12 +63,17 @@ namespace MQTTnet.Implementations
             Task.Run(AcceptClientConnectionsAsync, _cancellationToken);
         }
 
+        long totelSockets = 0;
+
         private async Task AcceptClientConnectionsAsync()
         {
             while (!_cancellationToken.IsCancellationRequested)
             {
+                Interlocked.Increment(ref totelSockets);
+
                 Socket clientSocket = null;
                 SslStream sslStream = null;
+                var stopwatch = Stopwatch.StartNew();
                 try
                 {
 #if NET452 || NET461
@@ -77,26 +83,36 @@ namespace MQTTnet.Implementations
 #endif
                     clientSocket.NoDelay = true;
 
+                    _logger.Verbose("Client '{0}' accepted by TCP listener '{1}, {2}',  Socket[{3}]:{4}ms",
+                        clientSocket.RemoteEndPoint,
+                        _socket.LocalEndPoint,
+                        _addressFamily == AddressFamily.InterNetwork ? "ipv4" : "ipv6",
+                        totelSockets, stopwatch.Elapsed.TotalMilliseconds);
+
                     if (_tlsCertificate != null)
                     {
                         sslStream = new SslStream(new NetworkStream(clientSocket), false);
                         await sslStream.AuthenticateAsServerAsync(_tlsCertificate, false, _tlsOptions.SslProtocol, false).ConfigureAwait(false);
-                    }
 
-                    _logger.Verbose("Client '{0}' accepted by TCP listener '{1}, {2}'.",
-                        clientSocket.RemoteEndPoint,
-                        _socket.LocalEndPoint,
-                        _addressFamily == AddressFamily.InterNetwork ? "ipv4" : "ipv6");
+                        _logger.Verbose("Client '{0}' SslStream created. Socket[{1}]:{2}ms",
+                            clientSocket.RemoteEndPoint,
+                            totelSockets, stopwatch.Elapsed.TotalMilliseconds);
+                    }
 
                     var clientAdapter = new MqttChannelAdapter(new MqttTcpChannel(clientSocket, sslStream), new MqttPacketSerializer(), _logger);
                     ClientAccepted?.Invoke(this, new MqttServerAdapterClientAcceptedEventArgs(clientAdapter));
+
+                    _logger.Verbose("Client '{0}' processed. Socket[{1}]:{2}ms",
+                        clientSocket.RemoteEndPoint,
+                        totelSockets, stopwatch.Elapsed.TotalMilliseconds);
+                    stopwatch.Stop();
                 }
                 catch (ObjectDisposedException exception)
                 {
                     var localEndPoint = clientSocket?.LocalEndPoint?.ToString();
                     var remoteEndPoint = clientSocket?.RemoteEndPoint?.ToString();
                     Cleanup(clientSocket, sslStream);
-                    _logger.Warning(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Skip.");
+                    _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Socket[{totelSockets}]:{stopwatch.Elapsed.TotalMilliseconds}ms, Skip.");
                     // It can happen that the listener socket is accessed after the cancellation token is already set and the listener socket is disposed.
                 }
                 catch (Exception exception)
@@ -107,18 +123,22 @@ namespace MQTTnet.Implementations
 
                     if (exception is SocketException s && s.SocketErrorCode == SocketError.OperationAborted)
                     {
-                        _logger.Warning(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, OperationAborted.");
+                        _logger.Warning(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Socket[{totelSockets}]:{stopwatch.Elapsed.TotalMilliseconds}ms, OperationAborted.");
                         return;
                     }
                     if(exception is System.IO.IOException ioException)
                     {
-                        _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Wait for 0.1s.");
+                        _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Socket[{totelSockets}]:{stopwatch.Elapsed.TotalMilliseconds}ms, Wait for 0.1s.");
                         await Task.Delay(TimeSpan.FromSeconds(0.1), _cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
-                    _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Wait for 1s.");
+                    _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Socket[{totelSockets}]:{stopwatch.Elapsed.TotalMilliseconds}ms, Wait for 1s.");
                     await Task.Delay(TimeSpan.FromSeconds(1), _cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    stopwatch.Stop();
                 }
             }
         }
