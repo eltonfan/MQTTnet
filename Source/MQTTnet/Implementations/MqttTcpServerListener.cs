@@ -73,7 +73,7 @@ namespace MQTTnet.Implementations
 
                 Socket clientSocket = null;
                 SslStream sslStream = null;
-                var stopwatch = Stopwatch.StartNew();
+                var stopwatch = new Stopwatch();
                 try
                 {
 #if NET452 || NET461
@@ -81,6 +81,7 @@ namespace MQTTnet.Implementations
 #else
                     clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
 #endif
+                    stopwatch.Start();
                     clientSocket.NoDelay = true;
 
                     _logger.Verbose("Client '{0}' accepted by TCP listener '{1}, {2}',  Socket[{3}]:{4}ms",
@@ -105,7 +106,6 @@ namespace MQTTnet.Implementations
                     _logger.Verbose("Client '{0}' processed. Socket[{1}]:{2}ms",
                         clientSocket.RemoteEndPoint,
                         totelSockets, stopwatch.Elapsed.TotalMilliseconds);
-                    stopwatch.Stop();
                 }
                 catch (ObjectDisposedException exception)
                 {
