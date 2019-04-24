@@ -217,12 +217,14 @@ namespace MQTTnet.Server
         private async Task RunSessionAsync(IMqttChannelAdapter clientAdapter, CancellationToken cancellationToken)
         {
             var clientId = string.Empty;
-            
+
+            //本方法内需要负责 clientAdapter 的清理工作
             try
             {
                 var firstPacket = await clientAdapter.ReceivePacketAsync(_options.DefaultCommunicationTimeout, cancellationToken).ConfigureAwait(false);
                 if (firstPacket == null)
                 {
+                    await Cleanup(clientAdapter);
                     return;
                 }
 
@@ -246,24 +248,7 @@ namespace MQTTnet.Server
                         },
                         cancellationToken).ConfigureAwait(false);
 
-                    try
-                    {
-                        await clientAdapter.DisconnectAsync(_options.DefaultCommunicationTimeout, CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch (Exception exception)
-                    {
-                        _logger.Error(exception, "Error while disconnecting channel adapter.");
-                    }
-
-                    try
-                    {
-                        clientAdapter.Dispose();
-                    }
-                    catch (Exception exception)
-                    {
-                        _logger.Error(exception, "Error while disposing channel adapter.");
-                    }
-
+                    await Cleanup(clientAdapter);
                     return;
                 }
 
@@ -280,13 +265,17 @@ namespace MQTTnet.Server
                 _logger.Info("Client '{0}': Connected.", clientId);
                 _eventDispatcher.OnClientConnected(clientId);
 
+                // Session.RunAsync 后, 交由 MqttClientSession 负责 clientAdapter 的清理工作
                 await result.Session.RunAsync(connectPacket, clientAdapter).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
+                await Cleanup(clientAdapter);
             }
             catch (Exception exception)
             {
+                await Cleanup(clientAdapter);
+
                 _logger.Error(exception, exception.Message);
             }
             finally
@@ -295,6 +284,27 @@ namespace MQTTnet.Server
                 {
                     DeleteSession(clientId);
                 }
+            }
+        }
+
+        async Task Cleanup(IMqttChannelAdapter clientAdapter)
+        {
+            try
+            {
+                await clientAdapter.DisconnectAsync(_options.DefaultCommunicationTimeout, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                _logger.Error(exception, "Error while disconnecting channel adapter.");
+            }
+
+            try
+            {
+                clientAdapter.Dispose();
+            }
+            catch (Exception exception)
+            {
+                _logger.Error(exception, "Error while disposing channel adapter.");
             }
         }
 
