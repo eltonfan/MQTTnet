@@ -20,6 +20,7 @@ namespace MQTTnet.Implementations
         private readonly IMqttNetChildLogger _logger;
         private readonly CancellationToken _cancellationToken;
         private readonly AddressFamily _addressFamily;
+        private readonly TimeSpan _communicationTimeout;
         private readonly MqttServerTcpEndpointBaseOptions _options;
         private readonly MqttServerTlsTcpEndpointOptions _tlsOptions;
         private readonly X509Certificate2 _tlsCertificate;
@@ -29,12 +30,14 @@ namespace MQTTnet.Implementations
             AddressFamily addressFamily,
             MqttServerTcpEndpointBaseOptions options,
             X509Certificate2 tlsCertificate,
+            TimeSpan communicationTimeout,
             CancellationToken cancellationToken,
             IMqttNetChildLogger logger)
         {
             _addressFamily = addressFamily;
             _options = options;
             _tlsCertificate = tlsCertificate;
+            _communicationTimeout = communicationTimeout;
             _cancellationToken = cancellationToken;
             _logger = logger.CreateChildLogger(nameof(MqttTcpServerListener));
             
@@ -91,7 +94,10 @@ namespace MQTTnet.Implementations
                         totelSockets, stopwatch.Elapsed.TotalMilliseconds);
 
                     if (_tlsCertificate != null)
-                    {
+                    {//如果不设置超时，AuthenticateAsServerAsync 可能会一直阻塞下去
+                        clientSocket.ReceiveTimeout = (int)_communicationTimeout.TotalMilliseconds;
+                        clientSocket.SendTimeout = (int)_communicationTimeout.TotalMilliseconds;
+
                         sslStream = new SslStream(new NetworkStream(clientSocket), false);
                         await sslStream.AuthenticateAsServerAsync(_tlsCertificate, false, _tlsOptions.SslProtocol, false).ConfigureAwait(false);
 

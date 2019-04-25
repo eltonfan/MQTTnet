@@ -36,7 +36,7 @@ namespace MQTTnet.Implementations
 
             if (options.DefaultEndpointOptions.IsEnabled)
             {
-                RegisterListeners(options.DefaultEndpointOptions, null);
+                RegisterListeners(options.DefaultEndpointOptions, options.DefaultCommunicationTimeout, null);
             }
 
             if (options.TlsEndpointOptions.IsEnabled)
@@ -52,7 +52,7 @@ namespace MQTTnet.Implementations
                     throw new InvalidOperationException("The certificate for TLS encryption must contain the private key.");
                 }
 
-                RegisterListeners(options.TlsEndpointOptions, tlsCertificate);
+                RegisterListeners(options.TlsEndpointOptions, options.DefaultCommunicationTimeout, tlsCertificate);
             }
 
             return Task.FromResult(0);
@@ -78,7 +78,7 @@ namespace MQTTnet.Implementations
             _listeners.Clear();
         }
 
-        private void RegisterListeners(MqttServerTcpEndpointBaseOptions options, X509Certificate2 tlsCertificate)
+        private void RegisterListeners(MqttServerTcpEndpointBaseOptions options, TimeSpan communicationTimeout, X509Certificate2 tlsCertificate)
         {
             if (!options.BoundInterNetworkAddress.Equals(IPAddress.None))
             {
@@ -86,6 +86,7 @@ namespace MQTTnet.Implementations
                     AddressFamily.InterNetwork,
                     options,
                     tlsCertificate,
+                    communicationTimeout,
                     _cancellationTokenSource.Token,
                     _logger);
 
@@ -100,6 +101,7 @@ namespace MQTTnet.Implementations
                     AddressFamily.InterNetworkV6,
                     options,
                     tlsCertificate,
+                    communicationTimeout,
                     _cancellationTokenSource.Token,
                     _logger);
 
