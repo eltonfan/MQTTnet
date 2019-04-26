@@ -99,7 +99,16 @@ namespace MQTTnet.Implementations
                         clientSocket.SendTimeout = (int)_communicationTimeout.TotalMilliseconds;
 
                         sslStream = new SslStream(new NetworkStream(clientSocket), false);
+
+                        var cancellationTokenDisposeSslStream = new CancellationTokenSource();
+                        var taskDisposeSslStream = Task.Run(async () => {
+                            await Task.Delay(TimeSpan.FromSeconds(2));
+                            sslStream.Dispose();
+                        }, cancellationTokenDisposeSslStream.Token);
+
                         await sslStream.AuthenticateAsServerAsync(_tlsCertificate, false, _tlsOptions.SslProtocol, false).ConfigureAwait(false);
+
+                        cancellationTokenDisposeSslStream.Cancel();
 
                         _logger.Verbose("Client '{0}' SslStream created. Socket[{1}]:{2}ms",
                             clientSocket.RemoteEndPoint,
