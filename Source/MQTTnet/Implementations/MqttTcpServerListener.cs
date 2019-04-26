@@ -101,10 +101,14 @@ namespace MQTTnet.Implementations
                         sslStream = new SslStream(new NetworkStream(clientSocket), false);
 
                         var cancellationTokenDisposeSslStream = new CancellationTokenSource();
-                        var taskDisposeSslStream = Task.Run(async () => {
-                            await Task.Delay(TimeSpan.FromSeconds(2));
-                            sslStream.Dispose();
-                        }, cancellationTokenDisposeSslStream.Token);
+                        var taskDisposeSslStream = Task.Delay(2000, cancellationTokenDisposeSslStream.Token)
+                            .ContinueWith((task) =>
+                            {
+                                if (task.IsCompleted)
+                                {//超时
+                                    sslStream.Dispose();
+                                }
+                            });
 
                         await sslStream.AuthenticateAsServerAsync(_tlsCertificate, false, _tlsOptions.SslProtocol, false).ConfigureAwait(false);
 
