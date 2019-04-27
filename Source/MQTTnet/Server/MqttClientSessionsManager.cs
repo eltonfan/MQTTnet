@@ -63,10 +63,10 @@ namespace MQTTnet.Server
                 _sessions.Clear();
             }
         }
-
-        public Task StartSession(IMqttChannelAdapter clientAdapter)
+        
+        public Task HandleClientAsync(IMqttChannelAdapter clientAdapter)
         {
-            return Task.Run(() => RunSessionAsync(clientAdapter, _cancellationToken), _cancellationToken);
+            return HandleClientAsync(clientAdapter, _cancellationToken);
         }
 
         public IList<IMqttClientSessionStatus> GetClientStatus()
@@ -213,8 +213,8 @@ namespace MQTTnet.Server
                 return _sessions.Values.ToList();
             }
         }
-
-        private async Task RunSessionAsync(IMqttChannelAdapter clientAdapter, CancellationToken cancellationToken)
+        
+        private async Task HandleClientAsync(IMqttChannelAdapter clientAdapter, CancellationToken cancellationToken)
         {
             var clientId = string.Empty;
 
