@@ -96,22 +96,21 @@ namespace MQTTnet.Implementations
         {
             var socketIndex = Interlocked.Increment(ref latestSocketIndex);
 
-            string remoteEndPoint = null;
-            string localEndPoint = null;
+            string clientPrefix = null;
+            string serverEndPont = null;
             SslStream sslStream = null;
             var stopwatch = new Stopwatch();
             try
             {
                 stopwatch.Start();
 
-                remoteEndPoint = clientSocket.RemoteEndPoint.ToString();
-                localEndPoint = clientSocket.LocalEndPoint.ToString();
-
-                _logger.Verbose("Client '{0}' accepted by TCP listener '{1}, {2}',  Socket[{3}]:{4}ms",
-                    remoteEndPoint,
+                clientPrefix = $"Socket[{socketIndex}, {clientSocket.RemoteEndPoint}]";
+                serverEndPont = string.Format("{0}, {1}, {2}",
                     _socket.LocalEndPoint,
                     _addressFamily == AddressFamily.InterNetwork ? "ipv4" : "ipv6",
-                    socketIndex, stopwatch.Elapsed.TotalMilliseconds);
+                    _tlsCertificate == null ? "tcp" : "tls");
+
+                _logger.Verbose($"{clientPrefix} > Accepted by TCP listener '{serverEndPont}'. Time:{stopwatch.Elapsed.TotalMilliseconds}ms");
 
                 clientSocket.NoDelay = true;
 
@@ -140,10 +139,10 @@ namespace MQTTnet.Implementations
 
                     cancellationTokenDisposeSslStream.Cancel();
 
-                    _logger.Verbose("Client '{0}' SslStream created. Socket[{1}]:{2}ms",
-                        clientSocket.RemoteEndPoint,
-                        socketIndex, stopwatch.Elapsed.TotalMilliseconds);
+                    _logger.Verbose($"{clientPrefix} > SslStream created. Time:{stopwatch.Elapsed.TotalMilliseconds}ms");
                 }
+
+                _logger.Verbose($"{clientPrefix} > Processed. Time:{stopwatch.Elapsed.TotalMilliseconds}ms");
 
                 if (ClientAccepted != null)
                 {
@@ -154,15 +153,11 @@ namespace MQTTnet.Implementations
                         await args.SessionTask.ConfigureAwait(false);
                     }
                 }
-
-                _logger.Verbose("Client '{0}' processed. Socket[{1}]:{2}ms",
-                    clientSocket.RemoteEndPoint,
-                    socketIndex, stopwatch.Elapsed.TotalMilliseconds);
             }
             catch (ObjectDisposedException exception)
             {
                 // It can happen that the listener socket is accessed after the cancellation token is already set and the listener socket is disposed.
-                _logger.Error(exception, $"Error while handling client connection. Client[{socketIndex}]:'{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS:{_tlsCertificate != null} Time:{stopwatch.Elapsed.TotalMilliseconds}ms Disposed");
+                _logger.Error(exception, $"{clientPrefix} > Error while handling client connection. Listener:'{serverEndPont}' Time:{stopwatch.Elapsed.TotalMilliseconds}ms Disposed");
             }
             catch (Exception exception)
             {
@@ -170,16 +165,16 @@ namespace MQTTnet.Implementations
 
                 if (exception is SocketException s && s.SocketErrorCode == SocketError.OperationAborted)
                 {
-                    _logger.Warning(exception, $"Error while handling client connection. Client[{socketIndex}]:'{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS:{_tlsCertificate != null} Time:{stopwatch.Elapsed.TotalMilliseconds}ms OperationAborted");
+                    _logger.Error(exception, $"{clientPrefix} > Error while handling client connection. Listener:'{serverEndPont}' Time:{stopwatch.Elapsed.TotalMilliseconds}ms OperationAborted");
                     return;
                 }
                 if (exception is System.IO.IOException ioException)
                 {
-                    _logger.Error(exception, $"Error while accepting connection at TCP listener '{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS={_tlsCertificate != null}, Socket[{socketIndex}]:{stopwatch.Elapsed.TotalMilliseconds}ms IOException");
+                    _logger.Error(exception, $"{clientPrefix} > Error while handling client connection. Listener:'{serverEndPont}' Time:{stopwatch.Elapsed.TotalMilliseconds}ms IOException");
                     return;
                 }
 
-                _logger.Error(exception, $"Error while handling client connection. Client[{socketIndex}]:'{localEndPoint}, {remoteEndPoint}, {_socket.LocalEndPoint}' TLS:{_tlsCertificate != null} Time:{stopwatch.Elapsed.TotalMilliseconds}ms Unknown");
+                _logger.Error(exception, $"{clientPrefix} > Error while handling client connection. Listener:'{serverEndPont}' Time:{stopwatch.Elapsed.TotalMilliseconds}ms Unknown");
             }
             finally
             {
@@ -187,14 +182,11 @@ namespace MQTTnet.Implementations
                 {
                     Cleanup(clientSocket, sslStream);
 
-                    _logger.Verbose("Client '{0}' disconnected at TCP listener '{1}, {2}'.",
-                        remoteEndPoint,
-                        _socket.LocalEndPoint,
-                        _addressFamily == AddressFamily.InterNetwork ? "ipv4" : "ipv6");
+                    _logger.Verbose($"{clientPrefix} > Disconnected at TCP listener '{serverEndPont}'. Time:{stopwatch.Elapsed.TotalMilliseconds}ms");
                 }
                 catch (Exception disposeException)
                 {
-                    _logger.Error(disposeException, "Error while cleaning up client connection");
+                    _logger.Error(disposeException, $"{clientPrefix} > Error while cleaning up client connection. Listener:'{serverEndPont}' Time:{stopwatch.Elapsed.TotalMilliseconds}ms");
                 }
 
                 stopwatch.Stop();
