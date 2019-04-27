@@ -124,7 +124,7 @@ namespace MQTTnet.Implementations
                     sslStream = new SslStream(stream, false);
 
                     var cancellationTokenDisposeSslStream = new CancellationTokenSource();
-                    var taskDisposeSslStream = Task.Delay(2000, cancellationTokenDisposeSslStream.Token)
+                    var taskDisposeSslStream = Task.Delay(_communicationTimeout, cancellationTokenDisposeSslStream.Token)
                         .ContinueWith((task) =>
                         {
                             if (task.IsCanceled)
