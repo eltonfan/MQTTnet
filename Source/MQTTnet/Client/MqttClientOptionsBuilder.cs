@@ -55,11 +55,18 @@ namespace MQTTnet.Client
             return this;
         }
 
-        public MqttClientOptionsBuilder WithCredentials(string username, string password = null)
+        public MqttClientOptionsBuilder WithCredentials(IMqttClientCredentials credentials)
+        {
+            _options.Credentials = credentials;
+
+            return this;
+        }
+
+        public MqttClientOptionsBuilder WithCredentials(string userName, string password = null)
         {
             _options.Credentials = new MqttClientCredentials
             {
-                Username = username,
+                UserName = userName,
                 Password = password
             };
 

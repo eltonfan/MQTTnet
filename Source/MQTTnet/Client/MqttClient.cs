@@ -196,11 +196,15 @@ namespace MQTTnet.Client
 
         private async Task<MqttConnAckPacket> AuthenticateAsync(MqttApplicationMessage willApplicationMessage, CancellationToken cancellationToken)
         {
+            string userName = null;
+            string password = null;
+            Options.Credentials?.Create(out userName, out password);
+
             var connectPacket = new MqttConnectPacket
             {
                 ClientId = Options.ClientId,
-                Username = Options.Credentials?.Username,
-                Password = Options.Credentials?.Password,
+                Username = userName,
+                Password = password,
                 CleanSession = Options.CleanSession,
                 KeepAlivePeriod = (ushort)Options.KeepAlivePeriod.TotalSeconds,
                 WillMessage = willApplicationMessage

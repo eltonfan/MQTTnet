@@ -2,7 +2,6 @@
 {
     public interface IMqttClientCredentials
     {
-        string Password { get; }
-        string Username { get; }
+        void Create(out string userName, out string password);
     }
 }
